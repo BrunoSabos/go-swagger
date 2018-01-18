@@ -153,6 +153,7 @@ type Opts struct {
 	Input      *spec.Swagger
 	ScanModels bool
 	BuildTags  string
+	Excludes   string
 }
 
 func safeConvert(str string) bool {
@@ -230,6 +231,12 @@ func newAppScanner(opts *Opts, includes, excludes packageFilters) (*appScanner, 
 	}
 	if input.Extensions == nil {
 		input.Extensions = make(spec.Extensions)
+	}
+
+	if opts.Excludes != "" {
+		for _, e := range strings.Split(opts.Excludes, ",") {
+			excludes = append(excludes, packageFilter{Name: e})
+		}
 	}
 
 	return &appScanner{

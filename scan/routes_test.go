@@ -229,7 +229,7 @@ func validateRoutesParameters(t *testing.T, ops spec.Paths) {
 	p = po.Post.Parameters[0]
 	assert.Equal(t, "id", p.Name)
 	assert.Equal(t, "The order id", p.Description)
-	assert.Equal(t, "", p.In)  // Invalid value should not be set
+	assert.Equal(t, "", p.In) // Invalid value should not be set
 	assert.Equal(t, false, p.Required)
 	assert.Equal(t, true, p.AllowEmptyValue)
 

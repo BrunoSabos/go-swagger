@@ -19,6 +19,8 @@ import (
 	"go/ast"
 	"log"
 
+	"strings"
+
 	"golang.org/x/tools/go/loader"
 )
 
@@ -27,7 +29,7 @@ type packageFilter struct {
 }
 
 func (pf *packageFilter) Matches(path string) bool {
-	return path == pf.Name
+	return strings.HasPrefix(path, pf.Name)
 }
 
 type packageFilters []packageFilter
@@ -71,6 +73,8 @@ type programClassifier struct {
 
 func (pc *programClassifier) Classify(prog *loader.Program) (*classifiedProgram, error) {
 	var cp classifiedProgram
+
+	fmt.Printf("Excludes %+v\n", pc.Excludes)
 	for pkg, pkgInfo := range prog.AllPackages {
 		if Debug {
 			log.Printf("analyzing: %s\n", pkg.Path())
@@ -81,8 +85,10 @@ func (pc *programClassifier) Classify(prog *loader.Program) (*classifiedProgram,
 			}
 		} else if pc.Excludes.HasFilters() {
 			if pc.Excludes.Matches(pkg.Path()) {
+				fmt.Printf("Exclude %s\n", pkg.Path())
 				continue
 			}
+			fmt.Printf("Include %s\n", pkg.Path())
 		}
 
 		for _, file := range pkgInfo.Files {

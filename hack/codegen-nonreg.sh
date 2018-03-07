@@ -70,7 +70,8 @@ todolist.simple.yml\
 known_skip_validation="@(\
 todolist.enums.yml|\
 todolist.models.yml|\
-todolist.schemavalidation.yml\
+todolist.schemavalidation.yml|\
+swagger-gsma.json\
 )"
 
 if [[ "$1" = "--circleci" ]] ; then
@@ -88,7 +89,7 @@ initColors
 
 # All fixtures in ./fixtures/codegen + some others
 cd ${0%/*}
-specdir="../fixtures/codegen ../fixtures/bugs/909"
+specdir="../fixtures/codegen ../fixtures/bugs/909 ../fixtures/bugs/1437"
 gendir=./tmp-gen
 rm -rf ${gendir}
 

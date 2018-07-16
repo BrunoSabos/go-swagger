@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/go-openapi/spec"
@@ -141,7 +142,8 @@ func TestInlinedSchemaResponses(t *testing.T) {
 							}
 						}
 						assert.Len(t, b.ExtraSchemas, 1)
-						assert.Equal(t, "[]*models.SuccessBodyItems0", res.Schema.GoType)
+						// ExtraSchema is not a definition: it is rendered in current operations package
+						assert.Equal(t, "[]*SuccessBodyItems0", res.Schema.GoType)
 					}
 				}
 			}
@@ -334,11 +336,11 @@ func TestGenResponses_Issue718_Required(t *testing.T) {
 
 // Issue776 includes references that span multiple files. Flattening or Expanding is required
 func TestGenResponses_Issue776_Spec(t *testing.T) {
-	spec.Debug = true
+	//spec.Debug = true
 	log.SetOutput(ioutil.Discard)
 	defer func() {
 		log.SetOutput(os.Stdout)
-		spec.Debug = false
+		//spec.Debug = false
 	}()
 
 	b, err := opBuilderWithFlatten("GetItem", "../fixtures/bugs/776/spec.yaml")
@@ -362,11 +364,11 @@ func TestGenResponses_Issue776_Spec(t *testing.T) {
 }
 
 func TestGenResponses_Issue776_SwaggerTemplate(t *testing.T) {
-	spec.Debug = true
+	//spec.Debug = true
 	log.SetOutput(ioutil.Discard)
 	defer func() {
 		log.SetOutput(os.Stdout)
-		spec.Debug = false
+		//spec.Debug = false
 	}()
 
 	b, err := opBuilderWithFlatten("getHealthy", "../fixtures/bugs/776/swagger-template.yml")
@@ -479,4 +481,198 @@ func TestGenResponses_Issue892(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestGenResponses_Issue1013(t *testing.T) {
+	b, erp := methodPathOpBuilder("get", "/test", "../fixtures/bugs/1013/fixture-1013.yaml")
+	if assert.NoError(t, erp) {
+		op, erm := b.MakeOperation()
+		if assert.NoError(t, erm) {
+			var buf bytes.Buffer
+			opts := opts()
+			if assert.NoError(t, templates.MustGet("serverResponses").Execute(&buf, op)) {
+				ff, err := opts.LanguageOpts.FormatContent("foo.go", buf.Bytes())
+				if assert.NoError(t, err) {
+					assertInCode(t, "Payload *models.Response `json:\"body,omitempty\"`", string(ff))
+				} else {
+					fmt.Println(buf.String())
+				}
+			}
+		}
+	}
+	b, erp = methodPathOpBuilder("get", "/test2", "../fixtures/bugs/1013/fixture-1013.yaml")
+	if assert.NoError(t, erp) {
+		op, erm := b.MakeOperation()
+		if assert.NoError(t, erm) {
+			var buf bytes.Buffer
+			opts := opts()
+			if assert.NoError(t, templates.MustGet("serverResponses").Execute(&buf, op)) {
+				ff, err := opts.LanguageOpts.FormatContent("foo.go", buf.Bytes())
+				if assert.NoError(t, err) {
+					assertInCode(t, "Payload *models.Response `json:\"body,omitempty\"`", string(ff))
+				} else {
+					fmt.Println(buf.String())
+				}
+			}
+		}
+	}
+}
+
+func TestGenResponse_15362_WithExpand(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer func() {
+		log.SetOutput(os.Stdout)
+	}()
+
+	fixtureConfig := map[string]map[string][]string{
+		// load expectations for parameters in operation get_nested_required_responses.go
+		"getNestedRequired": { // fixture index
+			"serverResponses": { // executed template
+				// expected code lines
+				`const GetNestedRequiredOKCode int = 200`,
+				`type GetNestedRequiredOK struct {`,
+				"	Payload [][][][]*GetNestedRequiredOKBodyItems0 `json:\"body,omitempty\"`",
+				`func NewGetNestedRequiredOK() *GetNestedRequiredOK {`,
+				`	return &GetNestedRequiredOK{`,
+				`func (o *GetNestedRequiredOK) WithPayload(payload [][][][]*GetNestedRequiredOKBodyItems0) *GetNestedRequiredOK {`,
+				`func (o *GetNestedRequiredOK) SetPayload(payload [][][][]*GetNestedRequiredOKBodyItems0) {`,
+				`func (o *GetNestedRequiredOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+			},
+			"serverOperation": { // executed template
+				// expected code lines
+				`type GetNestedRequiredOKBodyItems0 struct {`,
+				"	Pkcs *string `json:\"pkcs\"`",
+				`func (o *GetNestedRequiredOKBodyItems0) Validate(formats strfmt.Registry) error {`,
+				`	if err := o.validatePkcs(formats); err != nil {`,
+				`		return errors.CompositeValidationError(res...`,
+				`func (o *GetNestedRequiredOKBodyItems0) validatePkcs(formats strfmt.Registry) error {`,
+				`	if err := validate.Required("pkcs", "body", o.Pkcs); err != nil {`,
+			},
+		},
+	}
+
+	// assertParams also works for responses
+	assertParams(t, fixtureConfig, filepath.Join("..", "fixtures", "bugs", "1536", "fixture-1536-2-responses.yaml"), true, false)
+}
+
+func TestGenResponse_1572(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer func() {
+		log.SetOutput(os.Stdout)
+	}()
+
+	// testing fixture-1572.yaml with minimal flatten
+	// edge cases for operations schemas
+
+	/*
+	        Run the following test caes and exercise the minimal flatten mode:
+	   - [x] nil schema in body param / response
+	   - [x] interface{} in body param /response
+	   - [x] additional schema reused from model (body param and response) (with maps or arrays)
+	   - [x] primitive body / response
+	   - [x] $ref'ed response and param (check that minimal flatten expands it)
+
+	*/
+
+	fixtureConfig := map[string]map[string][]string{
+
+		// load expectations for responses in operation get_interface_responses.go
+		"getInterface": { // fixture index
+			"serverResponses": { // executed template
+				// expected code lines
+				`const GetInterfaceOKCode int = 200`,
+				`type GetInterfaceOK struct {`,
+				"	Payload interface{} `json:\"body,omitempty\"`",
+				`func NewGetInterfaceOK() *GetInterfaceOK {`,
+				`	return &GetInterfaceOK{`,
+				`func (o *GetInterfaceOK) WithPayload(payload interface{}) *GetInterfaceOK {`,
+				`	o.Payload = payload`,
+				`	return o`,
+				`func (o *GetInterfaceOK) SetPayload(payload interface{}) {`,
+				`	o.Payload = payload`,
+				`func (o *GetInterfaceOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+				`	rw.WriteHeader(200`,
+				`	payload := o.Payload`,
+				`	if err := producer.Produce(rw, payload); err != nil {`,
+			},
+		},
+
+		// load expectations for responses in operation get_primitive_responses.go
+		"getPrimitive": { // fixture index
+			"serverResponses": { // executed template
+				// expected code lines
+				`const GetPrimitiveOKCode int = 200`,
+				`type GetPrimitiveOK struct {`,
+				"	Payload float32 `json:\"body,omitempty\"`",
+				`func NewGetPrimitiveOK() *GetPrimitiveOK {`,
+				`	return &GetPrimitiveOK{`,
+				`func (o *GetPrimitiveOK) WithPayload(payload float32) *GetPrimitiveOK {`,
+				`	o.Payload = payload`,
+				`	return o`,
+				`func (o *GetPrimitiveOK) SetPayload(payload float32) {`,
+				`	o.Payload = payload`,
+				`func (o *GetPrimitiveOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+				`	rw.WriteHeader(200`,
+				`	payload := o.Payload`,
+				`	if err := producer.Produce(rw, payload); err != nil {`,
+			},
+		},
+
+		// load expectations for responses in operation get_null_responses.go
+		"getNull": { // fixture index
+			"serverResponses": { // executed template
+				// expected code lines
+				`const GetNullOKCode int = 200`,
+				`type GetNullOK struct {`,
+				"	Payload interface{} `json:\"body,omitempty\"`",
+				`func NewGetNullOK() *GetNullOK {`,
+				`	return &GetNullOK{`,
+				`func (o *GetNullOK) WithPayload(payload interface{}) *GetNullOK {`,
+				`	o.Payload = payload`,
+				`	return o`,
+				`func (o *GetNullOK) SetPayload(payload interface{}) {`,
+				`	o.Payload = payload`,
+				`func (o *GetNullOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+				`	rw.WriteHeader(200`,
+				`	payload := o.Payload`,
+				`	if err := producer.Produce(rw, payload); err != nil {`,
+				`const GetNullRequestProcessedCode int = 203`,
+				`/*GetNullRequestProcessed OK`,
+				`swagger:response getNullRequestProcessed`,
+				`*/`,
+				`type GetNullRequestProcessed struct {`,
+				`func NewGetNullRequestProcessed() *GetNullRequestProcessed {`,
+				`	return &GetNullRequestProcessed{`,
+				`func (o *GetNullRequestProcessed) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+				`	rw.Header().Del(runtime.HeaderContentType`,
+				`	rw.WriteHeader(203`,
+			},
+		},
+
+		// load expectations for responses in operation get_model_interface_responses.go
+		"getModelInterface": { // fixture index
+			"serverResponses": { // executed template
+				// expected code lines
+				`const GetModelInterfaceOKCode int = 200`,
+				`type GetModelInterfaceOK struct {`,
+				"	Payload []models.ModelInterface `json:\"body,omitempty\"`",
+				`func NewGetModelInterfaceOK() *GetModelInterfaceOK {`,
+				`	return &GetModelInterfaceOK{`,
+				`func (o *GetModelInterfaceOK) WithPayload(payload []models.ModelInterface) *GetModelInterfaceOK {`,
+				`	o.Payload = payload`,
+				`	return o`,
+				`func (o *GetModelInterfaceOK) SetPayload(payload []models.ModelInterface) {`,
+				`	o.Payload = payload`,
+				`func (o *GetModelInterfaceOK) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {`,
+				`	rw.WriteHeader(200`,
+				`	payload := o.Payload`,
+				`	if payload == nil {`,
+				`		payload = make([]models.ModelInterface, 0, 50`,
+				`	if err := producer.Produce(rw, payload); err != nil {`,
+			},
+		},
+	}
+
+	// assertParams also works for responses
+	assertParams(t, fixtureConfig, filepath.Join("..", "fixtures", "enhancements", "1572", "fixture-1572.yaml"), true, false)
 }

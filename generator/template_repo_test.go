@@ -408,15 +408,15 @@ func TestTemplates_FuncMap(t *testing.T) {
 
 // AddFile() global package function (protected vs unprotected)
 // Mostly unused in tests, since the Repository.AddFile()
-// is generally prefered.
+// is generally preferred.
 func TestTemplates_AddFile(t *testing.T) {
 	log.SetOutput(os.Stdout)
 
 	// unprotected
 	err := AddFile("functpl", funcTpl)
 	if assert.NoError(t, err) {
-		_, err := templates.Get("functpl")
-		assert.Nil(t, err)
+		_, erg := templates.Get("functpl")
+		assert.Nil(t, erg)
 	}
 	// protected
 	err = AddFile("schemabody", funcTpl)

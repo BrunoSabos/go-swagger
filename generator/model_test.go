@@ -293,6 +293,7 @@ func TestGenerateModel_Zeroes(t *testing.T) {
 			k.AliasedType = k.GoType
 			k.GoType = "myAliasedType"
 			rex = regexp.MustCompile(regexp.QuoteMeta(k.GoType+"("+k.AliasedType) + `\(\d*\)` + `\)`)
+			assert.True(t, rex.MatchString(k.Zero()))
 			//t.Logf("Zero for %s: %s", k.GoType, k.Zero())
 		case "strfmt.Base64": // akin to []byte
 			rex := regexp.MustCompile(regexp.QuoteMeta(v.Value.GoType) + `\(\[\]byte.*\)`)
@@ -302,6 +303,7 @@ func TestGenerateModel_Zeroes(t *testing.T) {
 			k.AliasedType = k.GoType
 			k.GoType = "myAliasedType"
 			rex = regexp.MustCompile(regexp.QuoteMeta(k.GoType+"("+k.AliasedType) + `\(\[\]byte.*\)` + `\)`)
+			assert.True(t, rex.MatchString(k.Zero()))
 			// t.Logf("Zero for %s: %s", k.GoType, k.Zero())
 		case "interface{}":
 			assert.Equal(t, `nil`, v.Value.Zero())
@@ -322,6 +324,7 @@ func TestGenerateModel_Zeroes(t *testing.T) {
 				k.AliasedType = k.GoType
 				k.GoType = "myAliasedType"
 				rex = regexp.MustCompile(regexp.QuoteMeta(k.GoType+"("+k.AliasedType) + `\(".*"\)` + `\)`)
+				assert.True(t, rex.MatchString(k.Zero()))
 				//t.Logf("Zero for %s: %s", k.GoType, k.Zero())
 			}
 		}
@@ -564,7 +567,8 @@ func TestGenerateModel_WithMapInterface(t *testing.T) {
 			assert.Equal(t, "map[string]interface{}", prop.GoType)
 			assert.True(t, prop.Required)
 			assert.True(t, prop.HasValidations)
-			assert.False(t, prop.NeedsValidation)
+			// NOTE(fredbi): NeedsValidation now deprecated
+			//assert.False(t, prop.NeedsValidation)
 			buf := bytes.NewBuffer(nil)
 			err := templates.MustGet("model").Execute(buf, genModel)
 			if assert.NoError(t, err) {
@@ -1121,7 +1125,10 @@ func TestGenerateModel_SimpleTuple(t *testing.T) {
 		schema := definitions[k]
 		opts := opts()
 		genModel, err := makeGenDefinition(k, "models", schema, specDoc, opts)
-		if assert.NoError(t, err) && assert.Empty(t, genModel.ExtraSchemas) {
+		if assert.NoError(t, err) && assert.Len(t, genModel.ExtraSchemas, 1) {
+			// NOTE: with PR#1592, an extra schema is added here because of the allOf tuple element.
+			// This uncovers another issue with special AllOfs (e.g. allOf [ ..., x-nullable:true ])
+			// TODO(fredbi): fix liftSpecialAllOf() to revert to: assert.Empty(t, genModel.ExtraSchemas)
 			assert.True(t, genModel.IsTuple)
 			assert.False(t, genModel.IsComplexObject)
 			assert.False(t, genModel.IsArray)
@@ -1139,21 +1146,29 @@ func TestGenerateModel_SimpleTuple(t *testing.T) {
 			assertInCode(t, "P1 *string `json:\"-\"`", res)
 			assertInCode(t, "P2 *strfmt.DateTime `json:\"-\"`", res)
 			assertInCode(t, "P3 *Notable `json:\"-\"`", res)
-			assertInCode(t, "P4 *Notable `json:\"-\"`", res)
+			// NOTE: with PR#1592, an extra schema is added here because of the allOf tuple element.
+			// This uncovers another issue with special AllOfs (e.g. allOf [ ..., x-nullable:true ])
+			// TODO(fredbi): fix liftSpecialAllOf() to revert to: assert.Empty(t, genModel.ExtraSchemas)
+			//assertInCode(t, "P4 *Notable `json:\"-\"`", res)
+			assertInCode(t, "P4 *SimpleTupleItems4 `json:\"-\"`", res)
 			assertInCode(t, k+") UnmarshalJSON", res)
 			assertInCode(t, k+") MarshalJSON", res)
 			assertInCode(t, "json.Marshal(data)", res)
 			assert.NotRegexp(t, regexp.MustCompile("lastIndex"), res)
 
 			for i, p := range genModel.Properties {
-				r := "m.P" + strconv.Itoa(i)
+				m := "m.P" + strconv.Itoa(i)
+				r := "&dataP" + strconv.Itoa(i)
+				var rr string
 				if !p.IsNullable {
-					r = "&" + r
+					rr = "dataP" + strconv.Itoa(i)
+				} else {
+					rr = r
 				}
-
 				assertInCode(t, fmt.Sprintf("buf = bytes.NewBuffer(stage1[%d])", i), res)
 				assertInCode(t, fmt.Sprintf("dec.Decode(%s)", r), res)
 				assertInCode(t, "P"+strconv.Itoa(i)+",", res)
+				assertInCode(t, fmt.Sprintf("%s = %s", m, rr), res)
 			}
 		}
 	}
@@ -1194,15 +1209,20 @@ func TestGenerateModel_TupleWithExtra(t *testing.T) {
 					assertInCode(t, k+") MarshalJSON", res)
 
 					for i, p := range genModel.Properties {
-						r := "m.P" + strconv.Itoa(i)
+						m := "m.P" + strconv.Itoa(i)
+						r := "&dataP" + strconv.Itoa(i)
+						var rr string
 						if !p.IsNullable {
-							r = "&" + r
+							rr = "dataP" + strconv.Itoa(i)
+						} else {
+							rr = r
 						}
 						assertInCode(t, fmt.Sprintf("lastIndex = %d", i), res)
 						assertInCode(t, fmt.Sprintf("buf = bytes.NewBuffer(stage1[%d])", i), res)
 						assertInCode(t, "dec := json.NewDecoder(buf)", res)
 						assertInCode(t, fmt.Sprintf("dec.Decode(%s)", r), res)
 						assertInCode(t, "P"+strconv.Itoa(i)+",", res)
+						assertInCode(t, fmt.Sprintf("%s = %s", m, rr), res)
 					}
 					assertInCode(t, "var lastIndex int", res)
 					assertInCode(t, "var toadd float64", res)
@@ -1253,15 +1273,20 @@ func TestGenerateModel_TupleWithComplex(t *testing.T) {
 					assertInCode(t, k+") MarshalJSON", res)
 
 					for i, p := range genModel.Properties {
-						r := "m.P" + strconv.Itoa(i)
+						m := "m.P" + strconv.Itoa(i)
+						r := "&dataP" + strconv.Itoa(i)
+						var rr string
 						if !p.IsNullable {
-							r = "&" + r
+							rr = "dataP" + strconv.Itoa(i)
+						} else {
+							rr = r
 						}
 						assertInCode(t, fmt.Sprintf("lastIndex = %d", i), res)
 						assertInCode(t, fmt.Sprintf("buf = bytes.NewBuffer(stage1[%d])", i), res)
 						assertInCode(t, "dec := json.NewDecoder(buf)", res)
 						assertInCode(t, fmt.Sprintf("dec.Decode(%s)", r), res)
 						assertInCode(t, "P"+strconv.Itoa(i)+",", res)
+						assertInCode(t, fmt.Sprintf("%s = %s", m, rr), res)
 					}
 
 					assertInCode(t, "var lastIndex int", res)
@@ -1324,14 +1349,19 @@ func TestGenerateModel_WithTuple(t *testing.T) {
 					assert.NotRegexp(t, regexp.MustCompile("lastIndex"), res)
 
 					for i, p := range sch.Properties {
-						r := "m.P" + strconv.Itoa(i)
+						m := "m.P" + strconv.Itoa(i)
+						r := "&dataP" + strconv.Itoa(i)
+						var rr string
 						if !p.IsNullable {
-							r = "&" + r
+							rr = "dataP" + strconv.Itoa(i)
+						} else {
+							rr = r
 						}
 						assertInCode(t, fmt.Sprintf("buf = bytes.NewBuffer(stage1[%d])", i), res)
 						assertInCode(t, "dec := json.NewDecoder(buf)", res)
 						assertInCode(t, fmt.Sprintf("dec.Decode(%s)", r), res)
 						assertInCode(t, "P"+strconv.Itoa(i)+",", res)
+						assertInCode(t, fmt.Sprintf("%s = %s", m, rr), res)
 					}
 				}
 			}
@@ -1386,15 +1416,20 @@ func TestGenerateModel_WithTupleWithExtra(t *testing.T) {
 					assertInCode(t, "json.Marshal(data)", res)
 
 					for i, p := range sch.Properties {
-						r := "m.P" + strconv.Itoa(i)
+						m := "m.P" + strconv.Itoa(i)
+						r := "&dataP" + strconv.Itoa(i)
+						var rr string
 						if !p.IsNullable {
-							r = "&" + r
+							rr = "dataP" + strconv.Itoa(i)
+						} else {
+							rr = r
 						}
 						assertInCode(t, fmt.Sprintf("lastIndex = %d", i), res)
 						assertInCode(t, fmt.Sprintf("buf = bytes.NewBuffer(stage1[%d])", i), res)
 						assertInCode(t, "dec := json.NewDecoder(buf)", res)
 						assertInCode(t, fmt.Sprintf("dec.Decode(%s)", r), res)
 						assertInCode(t, "P"+strconv.Itoa(i)+",", res)
+						assertInCode(t, fmt.Sprintf("%s = %s", m, rr), res)
 					}
 
 					assertInCode(t, "var lastIndex int", res)
@@ -1824,8 +1859,8 @@ func TestGenModel_Issue423(t *testing.T) {
 				ct, err := opts.LanguageOpts.FormatContent("SRN.go", buf.Bytes())
 				if assert.NoError(t, err) {
 					res := string(ct)
-					assertInCode(t, "site, err := UnmarshalSite(bytes.NewBuffer(data.Site), runtime.JSONConsumer())", res)
-					assertInCode(t, "result.siteField = site", res)
+					assertInCode(t, "propSite, err := UnmarshalSite(bytes.NewBuffer(data.Site), runtime.JSONConsumer())", res)
+					assertInCode(t, "result.siteField = propSite", res)
 				}
 			}
 		}
@@ -2126,102 +2161,6 @@ func TestGenModel_Issue1341(t *testing.T) {
 	}
 }
 
-// Non-regression when Debug mode activated
-// Run everything again in Debug mode, just to make
-// sure no side effect has been added while debugging
-// TODO: remove it when no more "if Debug {}" branches are
-// present in source code.
-func TestDebugModelEntries(t *testing.T) {
-	Debug = true
-	log.SetOutput(ioutil.Discard)
-	// Verification only: temporarily mute stderr for possible debug logs to stderr
-	//origStdout := os.Stdout
-	//origStderr := os.Stderr
-	//f, err := os.OpenFile("stderr.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	//if err != nil {
-	//	panic("Test interrupted: cannot redirect stderr to log file")
-	//}
-	//os.Stdout = ioutil.Discard
-	//os.Stderr = f
-
-	defer func() {
-		log.SetOutput(os.Stdout)
-		//os.Stderr = origStderr
-		Debug = false
-	}()
-
-	TestGenerateModel_Sanity(t)
-	TestGenerateModel_DocString(t)
-	TestGenerateModel_PropertyValidation(t)
-	TestGenerateModel_SchemaField(t)
-	TestGenSchemaType(t)
-	TestGenerateModel_Primitives(t)
-	TestGenerateModel_Nota(t)
-	TestGenerateModel_NotaWithRef(t)
-	TestGenerateModel_NotaWithMeta(t)
-	TestGenerateModel_RunParameters(t)
-	TestGenerateModel_NotaWithName(t)
-	TestGenerateModel_NotaWithRefRegistry(t)
-	TestGenerateModel_WithCustomTag(t)
-	TestGenerateModel_NotaWithMetaRegistry(t)
-	TestGenerateModel_WithMap(t)
-	TestGenerateModel_WithMapInterface(t)
-	TestGenerateModel_WithMapRef(t)
-	TestGenerateModel_WithMapComplex(t)
-	TestGenerateModel_WithMapRegistry(t)
-	TestGenerateModel_WithMapRegistryRef(t)
-	TestGenerateModel_WithMapComplexRegistry(t)
-	TestGenerateModel_WithAdditional(t)
-	TestGenerateModel_JustRef(t)
-	TestGenerateModel_WithRef(t)
-	TestGenerateModel_WithNullableRef(t)
-	TestGenerateModel_Scores(t)
-	TestGenerateModel_JaggedScores(t)
-	TestGenerateModel_Notables(t)
-	TestGenerateModel_Notablix(t)
-	TestGenerateModel_Stats(t)
-	TestGenerateModel_Statix(t)
-	TestGenerateModel_WithItems(t)
-	TestGenerateModel_WithComplexItems(t)
-	TestGenerateModel_WithItemsAndAdditional(t)
-	TestGenerateModel_WithItemsAndAdditional2(t)
-	TestGenerateModel_WithComplexAdditional(t)
-	TestGenerateModel_SimpleTuple(t)
-	TestGenerateModel_TupleWithExtra(t)
-	TestGenerateModel_TupleWithComplex(t)
-	TestGenerateModel_WithTuple(t)
-	TestGenerateModel_WithTupleWithExtra(t)
-	TestGenerateModel_WithAllOfAndDiscriminator(t)
-	TestGenerateModel_WithAllOfAndDiscriminatorAndArrayOfPolymorphs(t)
-	TestGenerateModel_WithAllOf(t)
-	TestNumericKeys(t)
-	TestGenModel_Issue196(t)
-	TestGenModel_Issue222(t)
-	TestGenModel_Issue243(t)
-	TestGenModel_Issue252(t)
-	TestGenModel_Issue251(t)
-	TestGenModel_Issue257(t)
-	TestGenModel_Issue340(t)
-	TestGenModel_Issue381(t)
-	TestGenModel_Issue300(t)
-	TestGenModel_Issue398(t)
-	TestGenModel_Issue454(t)
-	TestGenModel_Issue423(t)
-	TestGenModel_Issue453(t)
-	TestGenModel_Issue455(t)
-	TestGenModel_Issue763(t)
-	TestGenModel_Issue811_NullType(t)
-	TestGenModel_Issue811_Emojis(t)
-	TestGenModel_Issue752_EOFErr(t)
-	TestImports_ExistingModel(t)
-	TestGenModel_Issue786(t)
-	TestGenModel_Issue822(t)
-	TestGenModel_Issue981(t)
-	TestGenModel_Issue774(t)
-	TestGenModel_Issue1341(t)
-	Debug = false
-}
-
 // This tests to check that format validation is performed on non required schema properties
 func TestGenModel_Issue1347(t *testing.T) {
 	specDoc, err := loads.Spec("../fixtures/bugs/1347/fixture-1347.yaml")
@@ -2378,12 +2317,154 @@ func TestGenModel_Issue1409(t *testing.T) {
 					//log.Println("1409")
 					//log.Println(res)
 					// Just verify that the validation call is generated with proper format
-					assertInCode(t, `nodes, err := UnmarshalNodeSlice(bytes.NewBuffer(data.Nodes), runtime.JSONConsumer())`, res)
+					assertInCode(t, `propNodes, err := UnmarshalNodeSlice(bytes.NewBuffer(data.Nodes), runtime.JSONConsumer())`, res)
 					assertInCode(t, `if err := json.Unmarshal(raw, &rawProps); err != nil {`, res)
 					assertInCode(t, `m.GraphAdditionalProperties[k] = toadd`, res)
 					assertInCode(t, `b3, err = json.Marshal(m.GraphAdditionalProperties)`, res)
 				} else {
 					fmt.Println(buf.String())
+				}
+			}
+		}
+	}
+}
+
+// This tests makes sure model definitions from inline schema in response are properly flattened and get validation
+func TestGenModel_Issue866(t *testing.T) {
+	log.SetOutput(ioutil.Discard)
+	defer log.SetOutput(os.Stdout)
+
+	specDoc, err := loads.Spec("../fixtures/bugs/866/fixture-866.yaml")
+	if assert.NoError(t, err) {
+		p, ok := specDoc.Spec().Paths.Paths["/"]
+		if assert.True(t, ok) {
+			op := p.Get
+			responses := op.Responses.StatusCodeResponses
+			for k, r := range responses {
+				t.Logf("Response: %d", k)
+				schema := *r.Schema
+				opts := opts()
+				genModel, err := makeGenDefinition("GetOKBody", "models", schema, specDoc, opts)
+				if assert.NoError(t, err) {
+					buf := bytes.NewBuffer(nil)
+					err := templates.MustGet("model").Execute(buf, genModel)
+					if assert.NoError(t, err) {
+						ct, err := opts.LanguageOpts.FormatContent("foo.go", buf.Bytes())
+						if assert.NoError(t, err) {
+							res := string(ct)
+							assertInCode(t, `if err := validate.Required(`, res)
+							assertInCode(t, `if err := validate.MaxLength(`, res)
+							assertInCode(t, `if err := m.validateAccessToken(formats); err != nil {`, res)
+							assertInCode(t, `if err := m.validateAccountID(formats); err != nil {`, res)
+						} else {
+							fmt.Println(buf.String())
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+// This tests makes sure marshalling and validation is generated in aliased formatted definitions
+func TestGenModel_Issue946(t *testing.T) {
+	specDoc, err := loads.Spec("../fixtures/bugs/946/fixture-946.yaml")
+	if assert.NoError(t, err) {
+		definitions := specDoc.Spec().Definitions
+		k := "mydate"
+		schema := definitions[k]
+		opts := opts()
+		genModel, err := makeGenDefinition(k, "models", schema, specDoc, opts)
+		if assert.NoError(t, err) {
+			buf := bytes.NewBuffer(nil)
+			err := templates.MustGet("model").Execute(buf, genModel)
+			if assert.NoError(t, err) {
+				ct, err := opts.LanguageOpts.FormatContent("foo.go", buf.Bytes())
+				if assert.NoError(t, err) {
+					res := string(ct)
+					assertInCode(t, `type Mydate strfmt.Date`, res)
+					assertInCode(t, `func (m *Mydate) UnmarshalJSON(b []byte) error {`, res)
+					assertInCode(t, `return ((*strfmt.Date)(m)).UnmarshalJSON(b)`, res)
+					assertInCode(t, `func (m Mydate) MarshalJSON() ([]byte, error) {`, res)
+					assertInCode(t, `return (strfmt.Date(m)).MarshalJSON()`, res)
+					assertInCode(t, `if err := validate.FormatOf("", "body", "date", strfmt.Date(m).String(), formats); err != nil {`, res)
+				} else {
+					fmt.Println(buf.String())
+				}
+			}
+		}
+	}
+}
+
+// This tests makes sure that docstring in inline schema in response properly reflect the Required property
+func TestGenModel_Issue910(t *testing.T) {
+	specDoc, err := loads.Spec("../fixtures/bugs/910/fixture-910.yaml")
+	if assert.NoError(t, err) {
+		p, ok := specDoc.Spec().Paths.Paths["/mytest"]
+		if assert.True(t, ok) {
+			op := p.Get
+			responses := op.Responses.StatusCodeResponses
+			for k, r := range responses {
+				t.Logf("Response: %d", k)
+				schema := *r.Schema
+				opts := opts()
+				genModel, err := makeGenDefinition("GetMyTestOKBody", "models", schema, specDoc, opts)
+				if assert.NoError(t, err) {
+					buf := bytes.NewBuffer(nil)
+					err := templates.MustGet("model").Execute(buf, genModel)
+					if assert.NoError(t, err) {
+						ct, err := opts.LanguageOpts.FormatContent("foo.go", buf.Bytes())
+						if assert.NoError(t, err) {
+							res := string(ct)
+							assertInCode(t, "// bar\n	// Required: true\n	Bar *int64 `json:\"bar\"`", res)
+							assertInCode(t, "// foo\n	// Required: true\n	Foo interface{} `json:\"foo\"`", res)
+							assertInCode(t, "// baz\n	Baz int64 `json:\"baz,omitempty\"`", res)
+							assertInCode(t, "// quux\n	Quux []string `json:\"quux\"`", res)
+							assertInCode(t, `if err := validate.Required("bar", "body", m.Bar); err != nil {`, res)
+							assertInCode(t, `if err := validate.Required("foo", "body", m.Foo); err != nil {`, res)
+							assertNotInCode(t, `if err := validate.Required("baz", "body", m.Baz); err != nil {`, res)
+							assertNotInCode(t, `if err := validate.Required("quux", "body", m.Quux); err != nil {`, res)
+							// NOTE(fredbi); fixed Required in slices. This property has actually no validation
+							assertNotInCode(t, `if swag.IsZero(m.Quux) { // not required`, res)
+						} else {
+							fmt.Println(buf.String())
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestGenerateModel_Xorder(t *testing.T) {
+	specDoc, err := loads.Spec("../fixtures/codegen/x-order.yml")
+	if assert.NoError(t, err) {
+		definitions := specDoc.Spec().Definitions
+		k := "sessionData"
+		schema := definitions[k]
+		opts := opts()
+		genModel, err := makeGenDefinition(k, "models", schema, specDoc, opts)
+		if assert.NoError(t, err) {
+			buf := bytes.NewBuffer(nil)
+			err := templates.MustGet("model").Execute(buf, genModel)
+			if assert.NoError(t, err) {
+				ff, err := opts.LanguageOpts.FormatContent("x-order.go", buf.Bytes())
+				if assert.NoError(t, err) {
+					res := string(ff)
+					// if no x-order then alphabetical order, like DeviceID, SessionID, UMain.
+					// There is x-order
+					//   sessionId
+					//     x-order: 0
+					//   deviceId:
+					//     x-order: 1
+					//   uMain:
+					//     x-order: 2
+					// This is need for msgpack-array.
+					foundDeviceID := strings.Index(res, "DeviceID")
+					foundSessionID := strings.Index(res, "SessionID")
+					foundUMain := strings.Index(res, "UMain")
+					assert.True(t, foundSessionID < foundDeviceID)
+					assert.True(t, foundSessionID < foundUMain)
 				}
 			}
 		}

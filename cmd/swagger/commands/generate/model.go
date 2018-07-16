@@ -36,7 +36,7 @@ func (m *Model) Execute(args []string) error {
 	}
 
 	if m.ExistingModels != "" {
-		log.Println("Warning: Ignoring existing-models flag when generating models.")
+		log.Println("warning: Ignoring existing-models flag when generating models.")
 	}
 	s := &Server{
 		shared:         m.shared,

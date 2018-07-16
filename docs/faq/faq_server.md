@@ -12,11 +12,13 @@ Basically, here are the required packages:
 - [`github.com/go-openapi/strfmt`](https://www.github.com/go-openapi/strfmt)
 - [`github.com/go-openapi/swag`](https://www.github.com/go-openapi/swag)
 - [`github.com/go-openapi/validate`](https://www.github.com/go-openapi/validate)
-- [`github.com/tylerb/graceful`](https://www.github.com/tylerb/graceful)
 
 And depending on your generation options, a command line flags handling package:
 - [`github.com/jessevdk/go-flags`](https://www.github.com/jessevdk/go-flags), or
 - [`github.com/spf13/pflags`](https://www.github.com/spf13/pflags)
+
+This dependency used to be necessary up to release 0.14:
+- [`github.com/tylerb/graceful`](https://www.github.com/tylerb/graceful)
 
 These packages may of course be *vendored* with your own source.
 
@@ -265,27 +267,6 @@ layout:
      target: "{{ joinFilePath .Target .ServerPackage .APIPackage .Package }}"
      file_name: "{{ (snakize (pascalize .Name)) }}.go"
 ```
-
-### How to use swagger-ui cors?
-
-**Answer**: you can add a cors middleware.
-
-Like: https://github.com/rs/cors
-
-[Documentation on how to customize middleware](use/middleware.md)
-
-Working example (in `configure_name.go`):
-
-```golang
-import "github.com/rs/cors"
-
-func setupGlobalMiddleware(handler http.Handler) http.Handler {
-    handleCORS := cors.Default().Handler
-    return handleCORS(handler)
-}
-```
-
-Originally from issue [#481](https://github.com/go-swagger/go-swagger/issues/481).
 
 ### Support streaming responses
 _Use-Case_: Docker client expects a stream of JSON structs from daemon to show a progress bar, as in:

@@ -882,7 +882,11 @@ func init() {
           "200": {
             "description": "Successful response",
             "schema": {
-              "$ref": "#/definitions/listTasksOKBody"
+              "type": "array",
+              "title": "TaskList",
+              "items": {
+                "$ref": "#/definitions/TaskCard"
+              }
             },
             "headers": {
               "X-Last-Task-Id": {
@@ -1113,7 +1117,10 @@ func init() {
           "200": {
             "description": "The list of comments",
             "schema": {
-              "$ref": "#/definitions/getTaskCommentsOKBody"
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Comment"
+              }
             }
           },
           "default": {
@@ -1158,7 +1165,22 @@ func init() {
             "name": "body",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/addCommentToTaskParamsBody"
+              "description": "These values can have github flavored markdown.\n",
+              "type": "object",
+              "title": "A comment to create",
+              "required": [
+                "content",
+                "userId"
+              ],
+              "properties": {
+                "content": {
+                  "type": "string"
+                },
+                "userId": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
             }
           }
         ],
@@ -1332,7 +1354,26 @@ func init() {
           "pattern": "[A-Za-z][\\w- ]+"
         },
         "stats": {
-          "$ref": "#/definitions/milestoneStats"
+          "description": "This object contains counts for the remaining open issues and the amount of issues that have been closed.\n",
+          "type": "object",
+          "title": "Some counters for this milestone.",
+          "properties": {
+            "closed": {
+              "type": "integer",
+              "format": "int32",
+              "title": "The closed issues."
+            },
+            "open": {
+              "type": "integer",
+              "format": "int32",
+              "title": "The remaining open issues."
+            },
+            "total": {
+              "type": "integer",
+              "format": "int32",
+              "title": "The total number of issues for this milestone."
+            }
+          }
         }
       }
     },
@@ -1345,7 +1386,74 @@ func init() {
           "$ref": "#/definitions/TaskCard"
         },
         {
-          "$ref": "#/definitions/taskAllOf1"
+          "type": "object",
+          "properties": {
+            "attachments": {
+              "description": "An issue can have at most 20 files attached to it.\n",
+              "type": "object",
+              "title": "The attached files.",
+              "additionalProperties": {
+                "type": "object",
+                "maxProperties": 20,
+                "properties": {
+                  "contentType": {
+                    "description": "The content type of the file is inferred from the upload request.\n",
+                    "type": "string",
+                    "title": "The content type of the file.",
+                    "readOnly": true
+                  },
+                  "description": {
+                    "description": "This is a free form text field with support for github flavored markdown.\n",
+                    "type": "string",
+                    "title": "Extra information to attach to the file.",
+                    "minLength": 3
+                  },
+                  "name": {
+                    "description": "This name is inferred from the upload request.\n",
+                    "type": "string",
+                    "title": "The name of the file.",
+                    "readOnly": true
+                  },
+                  "size": {
+                    "description": "This property was generated during the upload request of the file.",
+                    "type": "number",
+                    "format": "float64",
+                    "title": "The file size in bytes.",
+                    "readOnly": true
+                  },
+                  "url": {
+                    "description": "This URL is generated on the server, based on where it was able to store the file when it was uploaded.\n",
+                    "type": "string",
+                    "format": "uri",
+                    "title": "The url to download or view the file.",
+                    "readOnly": true
+                  }
+                }
+              }
+            },
+            "comments": {
+              "description": "The detail view of an issue includes the 5 most recent comments.\nThis field is read only, comments are added through a separate process.\n",
+              "type": "array",
+              "title": "The 5 most recent items for this issue.",
+              "items": {
+                "$ref": "#/definitions/Comment"
+              },
+              "readOnly": true
+            },
+            "lastUpdated": {
+              "description": "This field is read only so it's only sent as part of the response.\n",
+              "type": "string",
+              "format": "date-time",
+              "title": "The time at which this issue was last updated.",
+              "readOnly": true
+            },
+            "lastUpdatedBy": {
+              "$ref": "#/definitions/UserCard"
+            },
+            "reportedBy": {
+              "$ref": "#/definitions/UserCard"
+            }
+          }
         }
       ]
     },
@@ -1484,159 +1592,15 @@ func init() {
           "$ref": "#/definitions/Error"
         },
         {
-          "$ref": "#/definitions/validationErrorAllOf1"
+          "type": "object",
+          "properties": {
+            "field": {
+              "description": "an optional field name to which this validation error applies",
+              "type": "string"
+            }
+          }
         }
       ]
-    },
-    "addCommentToTaskParamsBody": {
-      "description": "These values can have github flavored markdown.\n",
-      "type": "object",
-      "title": "A comment to create",
-      "required": [
-        "content",
-        "userId"
-      ],
-      "properties": {
-        "content": {
-          "type": "string"
-        },
-        "userId": {
-          "type": "integer",
-          "format": "int64"
-        }
-      },
-      "x-go-gen-location": "operations"
-    },
-    "getTaskCommentsOKBody": {
-      "type": "array",
-      "items": {
-        "$ref": "#/definitions/Comment"
-      },
-      "x-go-gen-location": "operations"
-    },
-    "listTasksOKBody": {
-      "type": "array",
-      "title": "TaskList",
-      "items": {
-        "$ref": "#/definitions/TaskCard"
-      },
-      "x-go-gen-location": "operations"
-    },
-    "milestoneStats": {
-      "description": "This object contains counts for the remaining open issues and the amount of issues that have been closed.\n",
-      "type": "object",
-      "title": "Some counters for this milestone.",
-      "properties": {
-        "closed": {
-          "type": "integer",
-          "format": "int32",
-          "title": "The closed issues."
-        },
-        "open": {
-          "type": "integer",
-          "format": "int32",
-          "title": "The remaining open issues."
-        },
-        "total": {
-          "type": "integer",
-          "format": "int32",
-          "title": "The total number of issues for this milestone."
-        }
-      },
-      "x-go-gen-location": "models"
-    },
-    "taskAllOf1": {
-      "type": "object",
-      "properties": {
-        "attachments": {
-          "$ref": "#/definitions/taskAllOf1Attachments"
-        },
-        "comments": {
-          "$ref": "#/definitions/taskAllOf1Comments"
-        },
-        "lastUpdated": {
-          "description": "This field is read only so it's only sent as part of the response.\n",
-          "type": "string",
-          "format": "date-time",
-          "title": "The time at which this issue was last updated.",
-          "readOnly": true
-        },
-        "lastUpdatedBy": {
-          "$ref": "#/definitions/UserCard"
-        },
-        "reportedBy": {
-          "$ref": "#/definitions/UserCard"
-        }
-      },
-      "x-go-gen-location": "models"
-    },
-    "taskAllOf1Attachments": {
-      "description": "An issue can have at most 20 files attached to it.\n",
-      "type": "object",
-      "title": "The attached files.",
-      "additionalProperties": {
-        "$ref": "#/definitions/taskAllOf1AttachmentsAdditionalProperties"
-      },
-      "x-go-gen-location": "models"
-    },
-    "taskAllOf1AttachmentsAdditionalProperties": {
-      "type": "object",
-      "maxProperties": 20,
-      "properties": {
-        "contentType": {
-          "description": "The content type of the file is inferred from the upload request.\n",
-          "type": "string",
-          "title": "The content type of the file.",
-          "readOnly": true
-        },
-        "description": {
-          "description": "This is a free form text field with support for github flavored markdown.\n",
-          "type": "string",
-          "title": "Extra information to attach to the file.",
-          "minLength": 3
-        },
-        "name": {
-          "description": "This name is inferred from the upload request.\n",
-          "type": "string",
-          "title": "The name of the file.",
-          "readOnly": true
-        },
-        "size": {
-          "description": "This property was generated during the upload request of the file.",
-          "type": "number",
-          "format": "float64",
-          "title": "The file size in bytes.",
-          "readOnly": true
-        },
-        "url": {
-          "description": "This URL is generated on the server, based on where it was able to store the file when it was uploaded.\n",
-          "type": "string",
-          "format": "uri",
-          "title": "The url to download or view the file.",
-          "readOnly": true
-        }
-      },
-      "x-go-gen-location": "models"
-    },
-    "taskAllOf1Comments": {
-      "description": "The detail view of an issue includes the 5 most recent comments.\nThis field is read only, comments are added through a separate process.\n",
-      "type": "array",
-      "title": "The 5 most recent items for this issue.",
-      "items": {
-        "$ref": "#/definitions/Comment"
-      },
-      "x-go-gen-location": "models",
-      "readOnly": true
-    },
-    "validationErrorAllOf1": {
-      "type": "object",
-      "properties": {
-        "field": {
-          "description": "an optional field name to which this validation error applies",
-          "type": "string"
-        }
-      },
-      "x-go-gen-location": "models"
     }
   },
   "parameters": {
